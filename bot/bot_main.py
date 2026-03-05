@@ -9,9 +9,9 @@ from aiogram.filters import CommandStart
 from aiogram.types import Message
 from dotenv import load_dotenv
 
-from monolith_flow import router as monolith_router
-from kie_banana_client import KieBananaClient
-from kie_llm_client import KieLLMClient
+from bot.monolith_flow import router as monolith_router
+from bot.kie_banana_client import KieBananaClient
+from bot.kie_llm_client import KieLLMClient
 
 
 BASE_DIR = Path(__file__).resolve().parent

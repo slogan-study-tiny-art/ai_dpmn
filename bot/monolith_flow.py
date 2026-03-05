@@ -14,9 +14,9 @@ from aiogram.types import (
     Message,
 )
 
-from prompt_builder import build_monolith_prompt
-from prompt_engineer import refine_monolith_prompt
-from job_store import add_job
+from bot.prompt_builder import build_monolith_prompt
+from bot.prompt_engineer import refine_monolith_prompt
+from bot.job_store import add_job
 
 
 BASE_DIR = Path(__file__).resolve().parent
