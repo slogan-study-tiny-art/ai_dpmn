@@ -1,128 +1,124 @@
 """
 Клиент для Kie AI API: создание задач на генерацию изображений (Nano Banana Pro и др.).
 
-Используется отдельно от KeiClient; под каждого провайдера — свой клиент.
-Endpoint: POST /api/v1/jobs/createTask
+- Загрузка файлов: POST /api/file-stream-upload → получаем URL.
+- Создание задачи: POST /api/v1/jobs/createTask с телом {"model": "...", "input": "<JSON-строка>"}.
+  В input строка JSON с полями: image_input (массив URL), aspect_ratio, output_format, prompt, resolution.
 """
 
 from __future__ import annotations
 
+import json
+import logging
+from pathlib import Path
 from typing import Any, Iterable
 
-from pathlib import Path
-
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class KieBananaClient:
     """
-    Обёртка над Kie AI API для создания задач генерации (Banana, Nano Banana Pro и т.д.).
-
-    Base URL: например https://api.kie.ai
-    Документация / пример: POST /api/v1/jobs/createTask с JSON body.
+    Обёртка над Kie AI API: загрузка файлов и создание задач генерации (Nano Banana Pro).
+    Base URL: один и тот же для upload и createTask (например https://api.kie.ai).
     """
 
     def __init__(self, base_url: str, api_key: str) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
 
-    def _url(self) -> str:
+    def _create_task_url(self) -> str:
         return f"{self._base_url}/api/v1/jobs/createTask"
 
-    def _headers(self) -> dict[str, str]:
+    def _upload_url(self) -> str:
+        return f"{self._base_url}/api/file-stream-upload"
+
+    def _headers_json(self) -> dict[str, str]:
         return {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}",
         }
+
+    async def _upload_file(self, path: Path, upload_path: str = "kieai/market") -> str:
+        """Загрузить файл через Kie File Stream Upload, вернуть URL для image_input."""
+        with path.open("rb") as f:
+            file_bytes = f.read()
+        file_name = path.name
+        suffix = path.suffix.lower()
+        if suffix in {".jpg", ".jpeg"}:
+            content_type = "image/jpeg"
+        elif suffix == ".png":
+            content_type = "image/png"
+        elif suffix == ".webp":
+            content_type = "image/webp"
+        else:
+            content_type = "application/octet-stream"
+
+        files = {"file": (file_name, file_bytes, content_type)}
+        data = {"uploadPath": upload_path, "fileName": file_name}
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                self._upload_url(),
+                headers={"Authorization": f"Bearer {self._api_key}"},
+                files=files,
+                data=data,
+            )
+            response.raise_for_status()
+            result = response.json()
+
+        data_obj = result.get("data") or result
+        url = data_obj.get("fileUrl") or data_obj.get("downloadUrl")
+        if not url:
+            raise ValueError(f"Upload response has no fileUrl/downloadUrl: {result}")
+        logger.info("Uploaded %s -> %s", path.name, url)
+        return url
 
     async def create_task(
         self,
         *,
         model: str,
         prompt: str,
-        aspect_ratio: str = "1:1",
+        aspect_ratio: str = "4:3",
         resolution: str = "1K",
-        output_format: str = "png",
+        output_format: str = "jpg",
         callback_url: str | None = None,
         image_paths: Iterable[Path] | None = None,
         **extra_input: Any,
     ) -> dict[str, Any]:
         """
-        Создать задачу на генерацию изображения в Kie AI (Banana).
+        Создать задачу на генерацию в Kie AI (Nano Banana Pro).
 
-        :param model: id модели, например "nano-banana-pro"
-        :param prompt: текстовый промт (универсальный монолитный — из prompt_builder)
-        :param aspect_ratio: соотношение сторон, например "1:1", "16:9"
-        :param resolution: разрешение, например "1K"
-        :param output_format: формат вывода, например "png"
-        :param callback_url: URL для callback по готовности (опционально)
-        :param image_paths: локальные пути к референсным изображениям (JPEG/PNG/WEBP, до 8 штук)
-        :param extra_input: дополнительные поля в input (если API поддерживает)
-        :return: ответ API (job id, status и т.д.)
+        Формат тела как в логах Kie: "input" — строка JSON с полями image_input (массив URL),
+        aspect_ratio, output_format, prompt, resolution.
         """
-        # Если нет референсных изображений — используем JSON-запрос как в примере документации.
-        if not image_paths:
-            payload: dict[str, Any] = {
-                "model": model,
-                "input": {
-                    "prompt": prompt,
-                    "aspect_ratio": aspect_ratio,
-                    "resolution": resolution,
-                    "output_format": output_format,
-                    **extra_input,
-                },
-            }
-            if callback_url:
-                payload["callBackUrl"] = callback_url
+        image_urls: list[str] = []
+        if image_paths:
+            for p in image_paths:
+                url = await self._upload_file(p)
+                image_urls.append(url)
 
-            async with httpx.AsyncClient(timeout=60) as client:
-                response = await client.post(
-                    self._url(),
-                    headers=self._headers(),
-                    json=payload,
-                )
-                response.raise_for_status()
-                return response.json()
-
-        # Если переданы пути к изображениям — отправляем multipart с полем image_input.
-        data: dict[str, Any] = {
-            "model": model,
-            "prompt": prompt,
+        input_obj: dict[str, Any] = {
+            "image_input": image_urls,
             "aspect_ratio": aspect_ratio,
-            "resolution": resolution,
             "output_format": output_format,
+            "prompt": prompt,
+            "resolution": resolution,
             **extra_input,
         }
+        payload: dict[str, Any] = {
+            "model": model,
+            "input": json.dumps(input_obj),
+        }
         if callback_url:
-            data["callBackUrl"] = callback_url
+            payload["callBackUrl"] = callback_url
 
-        files: list[tuple[str, tuple[str, bytes, str]]] = []
-        for path in image_paths:
-            # Kie Nano Banana Pro поддерживает JPEG, PNG, WEBP до 30MB; максимум 8 файлов.
-            # Здесь мы не валидируем размер, это ответственность вызывающего кода.
-            suffix = path.suffix.lower()
-            if suffix in {".jpg", ".jpeg"}:
-                content_type = "image/jpeg"
-            elif suffix == ".png":
-                content_type = "image/png"
-            elif suffix == ".webp":
-                content_type = "image/webp"
-            else:
-                content_type = "application/octet-stream"
-
-            files.append(
-                (
-                    "image_input",
-                    (path.name, path.read_bytes(), content_type),
-                )
-            )
-
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=120) as client:
             response = await client.post(
-                self._url(),
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                data=data,
-                files=files,
+                self._create_task_url(),
+                headers=self._headers_json(),
+                json=payload,
             )
             response.raise_for_status()
             return response.json()
