@@ -15,10 +15,11 @@ from bot.kie_llm_client import KieLLMClient
 
 
 BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASE_DIR.parent
 
 
 def load_config() -> dict:
-    load_dotenv()
+    load_dotenv(PROJECT_ROOT / ".env")
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not set in environment")
