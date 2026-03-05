@@ -88,6 +88,7 @@ async def kie_banana_callback(request: Request):
         logger.warning("Invalid JSON body: %s", e)
         return {"ok": False, "error": "invalid json"}
 
+    logger.info("Callback received, body keys: %s", list(body.keys()))
     job_id = _extract_job_id(body)
     if not job_id:
         logger.warning("No job_id in body: %s", list(body.keys()))

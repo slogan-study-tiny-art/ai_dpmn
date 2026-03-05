@@ -231,9 +231,12 @@ async def _start_processing(
         )
         return
 
+    logging.info("Kie createTask response: %s", result)
     job_id = result.get("job_id") or result.get("id") or result.get("task_id")
     if job_id:
         add_job(str(job_id), chat_id)
+    else:
+        logging.warning("No job_id in Kie response (keys: %s)", list(result.keys()))
 
     await message.answer(
         "Задача отправлена в генерацию (Nano Banana Pro). "
