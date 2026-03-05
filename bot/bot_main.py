@@ -4,14 +4,16 @@ import os
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 from dotenv import load_dotenv
 
-from bot.monolith_flow import router as monolith_router
+from bot import shared_data
 from bot.kie_banana_client import KieBananaClient
 from bot.kie_llm_client import KieLLMClient
+from bot.monolith_flow import router as monolith_router
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -53,25 +55,28 @@ async def main() -> None:
     )
 
     config = load_config()
-    bot = Bot(token=config["token"], parse_mode=ParseMode.HTML)
+    bot = Bot(
+        token=config["token"],
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
     dp = Dispatcher()
 
     if config["kie_api_key"]:
-        bot["kie_banana_client"] = KieBananaClient(
+        shared_data.kie_banana_client = KieBananaClient(
             base_url=config["kie_base_url"],
             api_key=config["kie_api_key"],
         )
-        bot["kie_llm_client"] = KieLLMClient(
+        shared_data.kie_llm_client = KieLLMClient(
             base_url=config["kie_base_url"],
             api_key=config["kie_api_key"],
         )
-        bot["kie_llm_model"] = config["kie_llm_model"]
-        bot["kie_banana_model"] = config["kie_banana_model"]
+        shared_data.kie_llm_model = config["kie_llm_model"]
+        shared_data.kie_banana_model = config["kie_banana_model"]
     else:
-        bot["kie_banana_client"] = None
-        bot["kie_llm_client"] = None
-        bot["kie_llm_model"] = None
-        bot["kie_banana_model"] = None
+        shared_data.kie_banana_client = None
+        shared_data.kie_llm_client = None
+        shared_data.kie_llm_model = None
+        shared_data.kie_banana_model = None
 
     dp.include_router(monolith_router)
     dp.message.register(handle_start, CommandStart())

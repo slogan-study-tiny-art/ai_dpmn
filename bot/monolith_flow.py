@@ -14,9 +14,10 @@ from aiogram.types import (
     Message,
 )
 
+from bot import shared_data
+from bot.job_store import add_job
 from bot.prompt_builder import build_monolith_prompt
 from bot.prompt_engineer import refine_monolith_prompt
-from bot.job_store import add_job
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -183,10 +184,10 @@ async def _start_processing(
         parse_mode="Markdown",
     )
 
-    banana_client = message.bot.get("kie_banana_client")
-    llm_client = message.bot.get("kie_llm_client")
-    banana_model = message.bot.get("kie_banana_model") or "nano-banana-pro"
-    llm_model = message.bot.get("kie_llm_model") or "gpt-5-2"
+    banana_client = shared_data.kie_banana_client
+    llm_client = shared_data.kie_llm_client
+    banana_model = shared_data.kie_banana_model or "nano-banana-pro"
+    llm_model = shared_data.kie_llm_model or "gpt-5-2"
 
     base_prompt = build_monolith_prompt(mode=mode, user_remark=None)
     if remark and llm_client:
